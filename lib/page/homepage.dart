@@ -3,7 +3,6 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:flutter/foundation.dart';
 
 class Home extends StatefulWidget {
   const Home({super.key});
@@ -13,31 +12,38 @@ class Home extends StatefulWidget {
 }
 
 class _HomeState extends State<Home> {
+  final SupabaseClient supabase = Supabase.instance.client;
+
   String? _publicImageUrl;
   bool _isUploading = false;
-  final SupabaseClient supabase = Supabase.instance.client;
+
   Future<void> _pickAndUploadToPublicBucket() async {
     final picker = ImagePicker();
-    //memanggil library membuka folder dll
     final picked = await picker.pickImage(source: ImageSource.gallery);
-    // jika diambil maka mempunyai nilai
-    // jika tidak di ambil tdk ada nilai atau null
     if (picked == null) return;
-    // karena sudah di ambil diberikan status proses uploading
-    // _isuploading jadi true
+
     setState(() => _isUploading = true);
-    // mulai persipan mengirim image
+
     try {
       final fileName =
           '${DateTime.now().millisecondsSinceEpoch}_${picked.name}';
       final filePath = 'uploads/$fileName';
-      final file = File(picked.path);
-      // upload ke bucket public `public-images`
-      await supabase.storage.from('my_images_bucket').upload(filePath, file);
-      // ambil public URL
+      final bytes = await picked.readAsBytes();
+
+      // final file = File(picked.path);
+
+      await supabase.storage
+          .from('my_images_bucket')
+          .uploadBinary(
+            filePath,
+            bytes,
+            fileOptions: const FileOptions(contentType: 'image/*'),
+          );
+
       final publicUrl = supabase.storage
           .from('my_images_bucket')
           .getPublicUrl(filePath);
+
       setState(() {
         _publicImageUrl = publicUrl;
       });
@@ -48,8 +54,6 @@ class _HomeState extends State<Home> {
           context,
         ).showSnackBar(SnackBar(content: Text('Gagal upload: $e')));
       }
-      // Final ini jika semua proses diatas sudah selesai
-      // baik gagal atau berhasil lakukan printah ini
     } finally {
       if (mounted) {
         setState(() => _isUploading = false);
@@ -59,6 +63,39 @@ class _HomeState extends State<Home> {
 
   @override
   Widget build(BuildContext context) {
-    return const Placeholder();
+    return Scaffold(
+      appBar: AppBar(title: const Text("Supabase Image Upload")),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (_isUploading) const LinearProgressIndicator(),
+            const SizedBox(height: 16),
+
+            ElevatedButton(
+              onPressed: _isUploading ? null : _pickAndUploadToPublicBucket,
+              child: const Text('Pilih & Upload Gambar'),
+            ),
+
+            const SizedBox(height: 24),
+
+            if (_publicImageUrl != null) ...[
+              const Text(
+                'Gambar dari Public URL:',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 8),
+              Image.network(_publicImageUrl!, height: 200, fit: BoxFit.cover),
+              const SizedBox(height: 8),
+              // SelectableText(
+              //   _publicImageUrl!,
+              //   style: const TextStyle(fontSize: 12),
+              // ),
+            ],
+          ],
+        ),
+      ),
+    );
   }
 }
